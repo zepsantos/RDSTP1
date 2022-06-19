@@ -4,6 +4,7 @@ from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
+from ryu.lib.packet import ether_types
 from ryu.lib.packet import ethernet
 
 class ExampleSwitch13(app_manager.RyuApp):
@@ -53,13 +54,16 @@ class ExampleSwitch13(app_manager.RyuApp):
         eth_pkt = pkt.get_protocol(ethernet.ethernet)
         dst = eth_pkt.dst
         src = eth_pkt.src
-    
+        if eth_pkt.ethertype == ether_types.ETH_TYPE_LLDP:
+            # ignore lldp packet
+            return
         # get the received port number from packet_in message.
         in_port = msg.match['in_port']
         self.logger.info("packet in %s %s %s %s", dpid, src, dst, in_port)
     
         # learn a mac address to avoid FLOOD next time.
         self.mac_to_port[dpid][src] = in_port
+
     
         # if the destination mac address is already learned,
     
