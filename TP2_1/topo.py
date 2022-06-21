@@ -59,7 +59,7 @@ def topo():
 
   net.addLink(switchL3_A, switchL3_B)
   net.addLink(switchL3_A, switchL3_C)
-  net.addLink(switchL3_B, switchL3_C)
+  net.addLink(switchL3_B, switchL3_C, cls=TCLink, delay='5ms')
   
  
   c0=net.addController('c0', controller=RemoteController, ip='127.0.0.1', port=6633, protocols='OpenFlow13')

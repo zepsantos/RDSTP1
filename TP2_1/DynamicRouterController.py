@@ -376,8 +376,8 @@ class DynamicRouting(app_manager.RyuApp):
         link = ev.link
         dst_link = link.dst
         src_link = link.src
-        self.net.add_edge(src_link.dpid,dst_link.dpid)
-        tmplst = [self.idToDataPath[src_link.dpid], self.idToDataPath[dst_link.dpid]]
+        self.net.add_edges_from([(link.src.dpid, link.dst.dpid, {'port': link.src.port_no})])
+        #tmplst = [self.idToDataPath[src_link.dpid], self.idToDataPath[dst_link.dpid]]
         #self.delete_flowWhenLinkDrop(tmplst)
 
     """ def delete_flow(self, datapath):
@@ -395,12 +395,13 @@ class DynamicRouting(app_manager.RyuApp):
     def remove_table_flows(self, datapath, table_id, match, instructions):
         """Create OFP flow mod message to remove flows from table."""
         ofproto = datapath.ofproto
-        flow_mod = datapath.ofproto_parser.OFPFlowMod(datapath, 0, 0, table_id,
+        parser = datapath.ofproto_parser
+        flow_mod = parser.OFPFlowMod(datapath, 0, 0, table_id,
                                                       ofproto.OFPFC_DELETE, 0, 0,
                                                       1,
                                                       ofproto.OFPCML_NO_BUFFER,
                                                       ofproto.OFPP_ANY, 0,
-                                                      match, instructions)
+                                                      match=match, instructions=instructions)
         return flow_mod
 
     def remove_flows(self, datapath, table_id):

@@ -52,7 +52,7 @@ def topo():
   # Add links
   net.addLink( switchL3, switchL2_A)
   net.addLink( switchL3, switchL2_B)
-  net.addLink( switchL3, switchL2_C)
+  net.addLink( switchL3, switchL2_C, cls=TCLink, delay='5ms')
   
   net.addLink( switchL2_A, host1_A)
   net.addLink( switchL2_A, host2_A)
