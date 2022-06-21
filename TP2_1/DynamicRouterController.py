@@ -9,6 +9,7 @@ from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
 from ryu.lib.packet import arp
+from ryu.lib import addrconv
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import icmp
 from ryu.lib.packet import ipv4
@@ -31,8 +32,8 @@ class DynamicRouting(app_manager.RyuApp):
         # Holds the topology data and structure
         self.arp_table = defaultdict(lambda: defaultdict(None))  # datapath.id X ( arp-ip-src X( arp-mac-src,port))
         self.arp_buffer = defaultdict(lambda: defaultdict(None))
-        self.dpidToIP = {21: '10.0.1.254', 19: '10.0.2.254', 20: '10.0.3.254'}
-        self.subnetToDpid = {'10.0.1.0': 21, '10.0.2.0': 19, '10.0.3.0': 20}
+        self.dpidToIP = {19: '10.0.1.254', 20: '10.0.2.254', 21: '10.0.3.254'}
+        self.subnetToDpid = {'10.0.1.0': 19, '10.0.2.0': 20, '10.0.3.0': 21}
         self.portHelper = {21: 1, 19: 1, 20: 1}
         self.idToDataPath = {}
         self.topologyMacs = defaultdict(lambda: defaultdict(None))
@@ -53,7 +54,10 @@ class DynamicRouting(app_manager.RyuApp):
                          '\n\tcapabilities=0x%08x',
                          msg.datapath_id, msg.n_buffers, msg.n_tables,
                          msg.auxiliary_id, msg.capabilities)
+        self.install_initial_flows(datapath,ofproto,parser)
 
+
+    def install_initial_flows(self,datapath,ofproto,parser):
         # install table-miss flow entry
         #
         # We specify NO BUFFER to max_len of the output action due to
@@ -357,41 +361,61 @@ class DynamicRouting(app_manager.RyuApp):
     This event is fired when a switch leaves the topo. i.e. fails.
     """
 
-    @set_ev_cls(event.EventSwitchLeave, [MAIN_DISPATCHER, CONFIG_DISPATCHER, DEAD_DISPATCHER])
-    def handler_switch_leave(self, ev):
-        self.logger.info("Not tracking Switches, switch leaved.")
+    @set_ev_cls(event.EventLinkDelete, [MAIN_DISPATCHER, CONFIG_DISPATCHER, DEAD_DISPATCHER])
+    def handler_link_leave(self, ev):
+        self.logger.info(f'link dropped')
+        link = ev.link
+        dst_link = link.dst
+        src_link = link.src
+        self.net.remove_edge(src_link.dpid,dst_link.dpid)
+        flowToDelete = [(self.idToDataPath[dst_link.dpid]),(self.idToDataPath[src_link.dpid])]
+        self.delete_flowWhenLinkDrop(flowToDelete)
 
-    # We are not using this function
-    def delete_flow(self, datapath):
+    @set_ev_cls(event.EventLinkAdd, [MAIN_DISPATCHER])
+    def handler_link_enter(self,ev):
+        link = ev.link
+        dst_link = link.dst
+        src_link = link.src
+        self.net.add_edge(src_link.dpid,dst_link.dpid)
+        tmplst = [self.idToDataPath[src_link.dpid], self.idToDataPath[dst_link.dpid]]
+        #self.delete_flowWhenLinkDrop(tmplst)
+
+    """ def delete_flow(self, datapath):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
-
-        for dst in self.mac_to_port[datapath.id].keys():
+        tmplst = list(self.topologyMacs[datapath.id].values())
+        for dst in tmplst:
             match = parser.OFPMatch(eth_dst=dst)
             mod = parser.OFPFlowMod(
                 datapath, command=ofproto.OFPFC_DELETE,
                 out_port=ofproto.OFPP_ANY, out_group=ofproto.OFPG_ANY,
                 priority=1, match=match)
-            datapath.send_msg(mod)
+            datapath.send_msg(mod)"""
 
-        """ final_src = dpid ## VERIFICAR ISTO
-        final_dst = self.subnetToDpid.get(subnetTo,None)
-        self.logger.info(f'dst_ip {dst_ip} , network {subnetTo}, final_dst {final_dst}')
-        if final_dst is None:
-            return
+    def remove_table_flows(self, datapath, table_id, match, instructions):
+        """Create OFP flow mod message to remove flows from table."""
+        ofproto = datapath.ofproto
+        flow_mod = datapath.ofproto_parser.OFPFlowMod(datapath, 0, 0, table_id,
+                                                      ofproto.OFPFC_DELETE, 0, 0,
+                                                      1,
+                                                      ofproto.OFPCML_NO_BUFFER,
+                                                      ofproto.OFPP_ANY, 0,
+                                                      match, instructions)
+        return flow_mod
 
-        if final_src not in self.net:
-            self.net.add_node(final_src)
-            #self.net.add_edge(dpid,src,{'port':in_port}))
-            self.net.add_edge(final_src,dpid)
-        if dst in self.net:
-            #print (src in self.net)
-            #print nx.shortest_path(self.net,1,4)
-            #print nx.shortest_path(self.net,4,1)
-            #print nx.shortest_path(self.net,src,4)
+    def remove_flows(self, datapath, table_id):
+        """Removing all flow entries."""
+        parser = datapath.ofproto_parser
+        ofproto = datapath.ofproto
+        empty_match = parser.OFPMatch()
+        instructions = []
+        flow_mod = self.remove_table_flows(datapath, table_id,
+                                           empty_match, instructions)
+        datapath.send_msg(flow_mod)
 
-            path=nx.shortest_path(self.net,final_src,final_dst)   
-            next=path[path.index(dpid)+1]
-            out_port=self.net[dpid][next]['port']
-        else:
-            out_port = ofproto.OFPP_FLOOD"""
+    def delete_flowWhenLinkDrop(self, mapdataPort):
+        datapath= mapdataPort[0]
+        datapathsrc = mapdataPort[1]
+        self.remove_flows(datapath,0)
+        self.remove_flows(datapathsrc,0)
+
