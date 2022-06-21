@@ -16,19 +16,15 @@ from ryu.lib.packet import ipv4
 from netaddr import *
 import networkx as nx
 from ryu.topology import event
-# Below is the library used for topo discovery
 from ryu.topology.api import get_switch, get_link
 import copy
 
-##TODO: VERIFICAR SE DATAPATH.id DA OS IDS 21,19,20
 
 class DynamicRouting(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
         super(DynamicRouting, self).__init__(*args, **kwargs)
-        # USed for learning switch functioning
-        self.mac_to_port = {}
         # Holds the topology data and structure
         self.arp_table = defaultdict(lambda: defaultdict(None))  # datapath.id X ( arp-ip-src X( arp-mac-src,port))
         self.arp_buffer = defaultdict(lambda: defaultdict(None))
@@ -104,12 +100,7 @@ class DynamicRouting(app_manager.RyuApp):
         mac_src = self.topologyMacs[datapath.id][port]
         if port is not None and ip_src is not None:
             self.send_arp(datapath, 1, mac_src, ip_src, "ff:ff:ff:ff:ff:ff", pkt_ipv4.dst, port)
-
-        """ 
-            somos o router
-        
-        """
-
+            
     def send_arp(self, datapath, opcode, srcMac, srcIp, dstMac, dstIp, outPort):
         if opcode == 1:
             targetMac = "00:00:00:00:00:00"
@@ -156,13 +147,6 @@ class DynamicRouting(app_manager.RyuApp):
             if datapath_to_send_arp is not None:
                 self.send_arp(datapath_to_send_arp, 2, src_mac, srcIp, dstMac, dstIp, out_port)
 
-            # Se forem da mesma subnet responder ao request
-            """if self.stripSubnetFromIP(ip_src) == self.stripSubnetFromIP(pkt_arp.dst_ip):
-                self.logger.info(f'answering back to arp request')
-                return
-            else:
-                self.send_arp(datapath,pkt_arp.opcode,src_mac,pkt_arp.src_ip,pkt_ethernet,pkt_arp,pkt_arp.dst_ip, )
-                self.logger.info(f'not on the same network')"""
 
     def getPortAndPid(self, ip):
         subnet = self.stripSubnetFromIP(ip)
@@ -361,7 +345,7 @@ class DynamicRouting(app_manager.RyuApp):
     This event is fired when a switch leaves the topo. i.e. fails.
     """
 
-    @set_ev_cls(event.EventLinkDelete, [MAIN_DISPATCHER, CONFIG_DISPATCHER, DEAD_DISPATCHER])
+    @set_ev_cls(event.EventLinkDelete, [MAIN_DISPATCHER])
     def handler_link_leave(self, ev):
         self.logger.info(f'link dropped')
         link = ev.link
@@ -380,18 +364,7 @@ class DynamicRouting(app_manager.RyuApp):
         #tmplst = [self.idToDataPath[src_link.dpid], self.idToDataPath[dst_link.dpid]]
         #self.delete_flowWhenLinkDrop(tmplst)
 
-    """ def delete_flow(self, datapath):
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        tmplst = list(self.topologyMacs[datapath.id].values())
-        for dst in tmplst:
-            match = parser.OFPMatch(eth_dst=dst)
-            mod = parser.OFPFlowMod(
-                datapath, command=ofproto.OFPFC_DELETE,
-                out_port=ofproto.OFPP_ANY, out_group=ofproto.OFPG_ANY,
-                priority=1, match=match)
-            datapath.send_msg(mod)"""
-
+   
     def remove_table_flows(self, datapath, table_id, match, instructions):
         """Create OFP flow mod message to remove flows from table."""
         ofproto = datapath.ofproto
