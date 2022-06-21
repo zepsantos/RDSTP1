@@ -1,0 +1,3 @@
+reset_state
+table_set_default firewall drop
+table_add firewall tcp_firewall 10.0.1.1 10.0.2.1 0->65535 5555->5555 =>  10.0.2.1 2 1
